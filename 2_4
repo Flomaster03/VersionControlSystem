@@ -1,0 +1,103 @@
+import java.io.File
+
+fun main(args: Array<String>) {
+
+    val str = readln()
+    if (str.isEmpty()) {
+        printHelp()
+    } else {
+        Catalog.vcs.mkdir() //создание папки vcs
+        val input = str.split(" ")
+        when (input[1]) {
+            "--help" -> printHelp()
+            "config" -> printConfig(input)
+            "add" -> printAdd(input)
+            "log" -> printLog()
+            "commit" -> printCommit()
+            "checkout" -> printCheckout()
+            else -> print("'${input[1]}' is not a SVCS command.")
+        }
+    }
+}
+
+fun printHelp() {
+    println(
+        """These are SVCS commands:
+config     Get and set a username.
+add        Add a file to the index.
+log        Show commit logs.
+commit     Save changes.
+checkout   Restore a file."""
+    )
+}
+
+//запись, перезапись имени пользователя и вывод его на печать
+fun printConfig(input: List<String>) {
+    val file = Catalog.vcs.resolve("config.txt")
+    if (!file.exists()) {
+        if (input.size == 3) {
+            println("Please, tell me who you are.")
+            return
+        } else {
+            Catalog.configFile.writeText(input[2])
+        }
+    } else {
+        if (input.size == 4 && input[2] != Catalog.configFile.readText()) Catalog.configFile.writeText(input[2])
+    }
+    println("The username is ${Catalog.configFile.readText()}.")
+}
+
+//добавление и вывод на печать отслеживаемых файлом (если они есть в дереве проекта)
+fun printAdd(input: List<String>) {
+    val file = Catalog.vcs.resolve("index.txt")
+    if (!file.exists()) {
+        if (input.size == 3) {
+            println("Add a file to the index.")
+            return
+        } else {
+            if (input[2].isInTree()) Catalog.indexFile.writeText(input[2])
+            println("The file '${input[2]}' is tracked.")
+        }
+    } else {
+        when {
+            input.size == 4 && !input[2].isInTree() -> println("Can't find '${input[2]}'.")
+            input.size == 4 && input[2] != Catalog.indexFile.readText() -> {
+                Catalog.indexFile.appendText("\n${input[2]}")
+                println("The file '${input[2]}' is tracked.")
+            }
+            input.size == 3 -> {
+                println("Tracked files:")
+                Catalog.indexFile.readLines().forEach { println(it) }
+            }
+        }
+    }
+}
+
+// extention функция: проверяет, есть ли такой файл в дереве корневого каталога
+fun String.isInTree(): Boolean {
+    val fileName = this
+    val rootDir = File(System.getProperty("user.dir")) //корневой каталог
+    for (i in rootDir.walkBottomUp()) {
+        if (i.name == fileName) return true
+    }
+    return false
+}
+
+fun printLog() {
+    println("Show commit logs.")
+}
+
+fun printCommit() {
+    println("Save changes.")
+}
+
+fun printCheckout() {
+    println("Restore a file.")
+}
+
+object Catalog {
+    val vcs = File("vcs") //папка vcs
+    private val separator = File.separator  //разделитель
+    val configFile = File("${vcs.path}${separator}config.txt") //относительный путь к файлу с именем пользователя
+    val indexFile = File("${vcs.path}${separator}index.txt") //относительный путь к файлу с отслеживаемыми файлами
+}
