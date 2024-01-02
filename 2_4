@@ -1,21 +1,20 @@
+package svcs
+
 import java.io.File
 
 fun main(args: Array<String>) {
-
-    val str = readln()
-    if (str.isEmpty()) {
+    if (args.isEmpty()) {
         printHelp()
     } else {
         Catalog.vcs.mkdir() //создание папки vcs
-        val input = str.split(" ")
-        when (input[1]) {
+        when (args[0]) {
             "--help" -> printHelp()
-            "config" -> printConfig(input)
-            "add" -> printAdd(input)
+            "config" -> printConfig(args.toList())
+            "add" -> printAdd(args.toList())
             "log" -> printLog()
             "commit" -> printCommit()
             "checkout" -> printCheckout()
-            else -> print("'${input[1]}' is not a SVCS command.")
+            else -> print("'${args[0]}' is not a SVCS command.")
         }
     }
 }
@@ -35,14 +34,14 @@ checkout   Restore a file."""
 fun printConfig(input: List<String>) {
     val file = Catalog.vcs.resolve("config.txt")
     if (!file.exists()) {
-        if (input.size == 3) {
+        if (input.size == 1) {
             println("Please, tell me who you are.")
             return
         } else {
-            Catalog.configFile.writeText(input[2])
+            Catalog.configFile.writeText(input[1])
         }
     } else {
-        if (input.size == 4 && input[2] != Catalog.configFile.readText()) Catalog.configFile.writeText(input[2])
+        if (input.size == 2 && input[0] != Catalog.configFile.readText()) Catalog.configFile.writeText(input[1])
     }
     println("The username is ${Catalog.configFile.readText()}.")
 }
@@ -51,21 +50,21 @@ fun printConfig(input: List<String>) {
 fun printAdd(input: List<String>) {
     val file = Catalog.vcs.resolve("index.txt")
     if (!file.exists()) {
-        if (input.size == 3) {
+        if (input.size == 1) {
             println("Add a file to the index.")
             return
         } else {
-            if (input[2].isInTree()) Catalog.indexFile.writeText(input[2])
-            println("The file '${input[2]}' is tracked.")
+            if (input[1].isInTree()) Catalog.indexFile.writeText(input[1])
+            println("The file '${input[1]}' is tracked.")
         }
     } else {
         when {
-            input.size == 4 && !input[2].isInTree() -> println("Can't find '${input[2]}'.")
-            input.size == 4 && input[2] != Catalog.indexFile.readText() -> {
-                Catalog.indexFile.appendText("\n${input[2]}")
-                println("The file '${input[2]}' is tracked.")
+            input.size == 2 && !input[1].isInTree() -> println("Can't find '${input[1]}'.")
+            input.size == 2 && input[1] != Catalog.indexFile.readText() -> {
+                Catalog.indexFile.appendText("\n${input[1]}")
+                println("The file '${input[1]}' is tracked.")
             }
-            input.size == 3 -> {
+            input.size == 1 -> {
                 println("Tracked files:")
                 Catalog.indexFile.readLines().forEach { println(it) }
             }
