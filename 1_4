@@ -1,30 +1,30 @@
-fun main(args: Array<String>) {
+package svcs
 
-    val str = readln()
-    if (str.isEmpty()) {
+fun main(args: Array<String>) {
+    if (args.isEmpty()) {
         printHelp()
     } else {
-        val input = str.split(" ")
-        when (input[1]) {
+        when (args[0]) {
             "--help" -> printHelp()
             "config" -> printConfig()
             "add" -> printAdd()
             "log" -> printLog()
             "commit" -> printCommit()
             "checkout" -> printCheckout()
-            else -> print("'${input[1]}' is not a SVCS command.")
+            else -> print("'${args[0]}' is not a SVCS command.")
         }
     }
-
 }
 
 fun printHelp() {
-    println("""These are SVCS commands:
+    println(
+        """These are SVCS commands:
 config     Get and set a username.
 add        Add a file to the index.
 log        Show commit logs.
 commit     Save changes.
-checkout   Restore a file.""")
+checkout   Restore a file."""
+    )
 }
 
 fun printConfig() {
