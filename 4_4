@@ -1,0 +1,140 @@
+import java.io.File
+import java.security.MessageDigest
+import java.util.*
+
+fun main(args: Array<String>) {
+    if (args.isEmpty()) {
+        printHelp()
+    } else {
+        Catalog.vcs.mkdir()
+        Catalog.configFile.createNewFile()
+        Catalog.indexFile.createNewFile()
+        Catalog.commits.mkdir()
+        Catalog.log.createNewFile()
+        Catalog.pathsOfFiles.createNewFile()
+        Catalog.hashCommit.createNewFile()
+
+        when (args[0]) {
+            "--help" -> printHelp()
+            "config" -> println(printConfig(args))
+            "add" -> println(printAdd(args))
+            "log" -> println(printLog())
+            "commit" -> println(printCommit(args))
+            "checkout" -> println(printCheckout(args))
+            else -> print("'${args[0]}' is not a SVCS command.")
+        }
+    }
+}
+
+fun printHelp() {
+    println(
+        """These are SVCS commands:
+config     Get and set a username.
+add        Add a file to the index.
+log        Show commit logs.
+commit     Save changes.
+checkout   Restore a file."""
+    )
+}
+
+fun printConfig(input: Array<String>): String {
+    val file = Catalog.configFile
+    return when (input.size) {
+        2 -> {
+            file.writeText(input[1])
+            "The username is ${file.readText()}."
+        }
+
+        else -> if (file.readText().isEmpty()) "Please, tell me who you are." else "The username is ${file.readText()}."
+    }
+}
+
+fun printAdd(input: Array<String>): String {
+    val file = Catalog.indexFile
+    return when (input.size) {
+        1 -> if (file.readText().isEmpty()) "Add a file to the index." else "Tracked files:\n${file.readText()}"
+        else -> when {
+            !input[1].isInTree() -> "Can't find '${input[1]}'."
+            else -> {
+                Catalog.indexFile.appendText("${input[1]}\n")
+                "The file '${input[1]}' is tracked."
+            }
+        }
+    }
+}
+
+fun printCommit(input: Array<String>): String {
+    val textFileNames = Catalog.indexFile.readText().trim()
+    if (input.size == 1) return "Message was not passed."
+    if (textFileNames.isEmpty()) return "Nothing to commit."
+    val paths = Catalog.pathsOfFiles.readLines().textToMap()
+    val fileNames = textFileNames.split("\n")
+    val oldCommitHash = Catalog.hashCommit.readText()
+    val newCommitHash = fileNames.map { File(paths[it].toString()).readText().textToHash() }
+        .fold("") { acc, s -> acc + s }.textToHash()
+    if (newCommitHash != oldCommitHash || Catalog.commits.list().isNullOrEmpty()) {
+        createCommitFolder(newCommitHash, fileNames, paths)
+        writeToLog(newCommitHash, input)
+        Catalog.hashCommit.writeText(newCommitHash)
+        return "Changes are committed."
+    }
+    return "Nothing to commit."
+}
+
+fun createCommitFolder(hash: String, fileNames: List<String>, paths: Map<String, String>) {
+    val hashFolderPath = File("${Catalog.commits}${File.separator}$hash")
+    hashFolderPath.mkdir()
+    fileNames.forEach { File(paths[it].toString()).copyTo(File("$hashFolderPath${File.separator}$it")) }
+}
+
+fun printLog(): String = Catalog.log.readText().ifEmpty { "No commits yet." }
+
+fun writeToLog(hash: String, input: Array<String>) {
+    val str = "commit $hash\nAuthor: ${Catalog.configFile.readText()}\n${input.drop(1).joinToString(" ")}\n"
+    val text = Catalog.log.readText()
+    Catalog.log.writeText("$str\n")
+    Catalog.log.appendText(text)
+}
+
+fun printCheckout(input: Array<String>): String {
+    if (input.size == 1) return "Commit id was not passed."
+    val commit = input[1]
+    val pathToFolder = File("${Catalog.commits}${File.separator}$commit")
+    if (!pathToFolder.isDirectory) return "Commit does not exist."
+    val files = pathToFolder.list()?.toList()
+    val paths = Catalog.pathsOfFiles.readLines().textToMap()
+    files!!.forEach { File("${pathToFolder}${File.separator}$it").copyTo(File(paths[it].toString()), overwrite = true) }
+    return "Switched to commit ${input[1]}."
+}
+
+fun String.textToHash(): String =
+    HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(this.toByteArray()))
+
+fun List<String>.textToMap(): Map<String, String> {
+    val map = mutableMapOf<String, String>()
+    this.forEach { str -> str.split(";").let { map[it[0]] = it[1] } }
+    return map.toMap()
+}
+
+fun String.isInTree(): Boolean {
+    val fileName = this
+    val rootDir = File(System.getProperty("user.dir"))
+    for (i in rootDir.walkBottomUp()) {
+        if (i.name == fileName) {
+            Catalog.pathsOfFiles.appendText("${i.name};${i.path}\n")
+            return true
+        }
+    }
+    return false
+}
+
+object Catalog {
+    val vcs = File("vcs")
+    private val separator = File.separator
+    val configFile = File("${vcs.path}${separator}config.txt")
+    val indexFile = File("${vcs.path}${separator}index.txt")
+    val commits = File("${vcs.path}${separator}commits")
+    val log = File("${vcs.path}${separator}log.txt")
+    val pathsOfFiles = File("${vcs.path}${separator}paths.txt")
+    val hashCommit = File("${vcs.path}${separator}hashCommit.txt")
+}
