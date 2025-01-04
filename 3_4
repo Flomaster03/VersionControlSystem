@@ -1,0 +1,143 @@
+package svcs
+
+import java.io.File
+import java.security.MessageDigest
+import java.util.*
+
+fun main(args: Array<String>) {
+    if (args.isEmpty()) {
+        printHelp()
+    } else {
+        Catalog.vcs.mkdir() //создание папки vcs
+        Catalog.configFile.createNewFile() // создание файла с именем пользователя
+        Catalog.indexFile.createNewFile() // создание файла со списком отслеживаемых файлов
+        Catalog.commits.mkdir() //создание папки коммитов
+        Catalog.log.createNewFile() // создание файла лога
+        Catalog.pathsOfFiles.createNewFile() //создание файла с путями к отслеживаемым файлам
+        Catalog.hashCommit.createNewFile() //создание файла с хэшем общего коммита
+
+        when (args[0]) {
+            "--help" -> printHelp()
+            "config" -> println(printConfig(args))
+            "add" -> println(printAdd(args))
+            "log" -> println(printLog())
+            "commit" -> println(printCommit(args))
+            "checkout" -> printCheckout()
+            else -> print("'${args[0]}' is not a SVCS command.")
+        }
+    }
+}
+
+fun printHelp() {
+    println(
+        """These are SVCS commands:
+config     Get and set a username.
+add        Add a file to the index.
+log        Show commit logs.
+commit     Save changes.
+checkout   Restore a file."""
+    )
+}
+
+//запись, перезапись имени пользователя
+fun printConfig(input: Array<String>): String {
+    val file = Catalog.configFile
+    return when (input.size) {
+        2 -> {
+            file.writeText(input[1])
+            "The username is ${file.readText()}."
+        }
+
+        else -> if (file.readText().isEmpty()) "Please, tell me who you are." else "The username is ${file.readText()}."
+    }
+}
+
+//добавление отслеживаемых файлов (если они есть в дереве проекта)
+fun printAdd(input: Array<String>): String {
+    val file = Catalog.indexFile
+    return when (input.size) {
+        1 -> if (file.readText().isEmpty()) "Add a file to the index." else "Tracked files:\n${file.readText()}"
+        else -> when {
+            !input[1].isInTree() -> "Can't find '${input[1]}'."
+            else -> {
+                Catalog.indexFile.appendText("${input[1]}\n")
+                "The file '${input[1]}' is tracked."
+            }
+        }
+    }
+}
+
+fun printCommit(input: Array<String>): String {
+    val textFileNames = Catalog.indexFile.readText().trim() //текст из файла с отслеживаемыми файлами
+    if (input.size == 1) return "Message was not passed."
+    if (textFileNames.isEmpty()) return "Nothing to commit."
+    val paths = Catalog.pathsOfFiles.readLines().textToMap()
+    val fileNames = textFileNames.split("\n") //list из имен отслеживаемых файлов
+    val oldCommitHash = Catalog.hashCommit.readText() //старый общий хэш
+    val newCommitHash = fileNames.map { File(paths[it].toString()).readText().textToHash() }
+        .fold("") { acc, s -> acc + s }.textToHash()
+    if (newCommitHash != oldCommitHash || Catalog.commits.list().isNullOrEmpty()) {
+        createCommitFolder(newCommitHash, fileNames, paths)
+        writeToLog(newCommitHash, input)
+        Catalog.hashCommit.writeText(newCommitHash)
+        return "Changes are committed."
+    }
+    return "Nothing to commit."
+}
+
+//создание папки с хэшем и копирование туда текущих отслеживаемых файлов
+fun createCommitFolder(hash: String, fileNames: List<String>, paths: Map<String, String>) {
+    val hashFolderPath = File("${Catalog.commits}${File.separator}$hash")
+    hashFolderPath.mkdir()
+    fileNames.forEach { File(paths[it].toString()).copyTo(File("$hashFolderPath${File.separator}$it")) }
+}
+
+fun printLog(): String = Catalog.log.readText().ifEmpty { "No commits yet." }
+
+// создание записи в лог: номер коммита, автор и тект, что сделано. Запись помещается наверх файла.
+fun writeToLog(hash: String, input: Array<String>) {
+    val str = "commit $hash\nAuthor: ${Catalog.configFile.readText()}\n${input.drop(1).joinToString(" ")}\n"
+    val text = Catalog.log.readText()
+    Catalog.log.writeText("$str\n")
+    Catalog.log.appendText(text)
+}
+
+fun printCheckout() {
+    println("Restore a file.")
+}
+
+//конвертация текста (строк) в hash при помощи Java Cryptography Architecture (JCA)
+fun String.textToHash(): String =
+    HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(this.toByteArray()))
+
+//конвертация текста из файла в карту: имя файла - его хэш или путь к нему
+fun List<String>.textToMap(): Map<String, String> {
+    val map = mutableMapOf<String, String>()
+    this.forEach { str -> str.split(";").let { map[it[0]] = it[1] } }
+    return map.toMap()
+}
+
+// проверка, есть ли такой файл в дереве корневого каталога. Если есть, то путь к нему добавляется в карту
+// и hash его содержимого добавляется в другую карту
+fun String.isInTree(): Boolean {
+    val fileName = this
+    val rootDir = File(System.getProperty("user.dir")) //корневой каталог
+    for (i in rootDir.walkBottomUp()) {
+        if (i.name == fileName) {
+            Catalog.pathsOfFiles.appendText("${i.name};${i.path}\n")
+            return true
+        }
+    }
+    return false
+}
+
+object Catalog {
+    val vcs = File("vcs") //папка vcs
+    private val separator = File.separator  //разделитель
+    val configFile = File("${vcs.path}${separator}config.txt") //относительный путь к файлу с именем пользователя
+    val indexFile = File("${vcs.path}${separator}index.txt") //относительный путь к файлу с отслеживаемыми файлами
+    val commits = File("${vcs.path}${separator}commits") //относительный путь к папке с коммитами
+    val log = File("${vcs.path}${separator}log.txt") //относительный путь к файлу лога
+    val pathsOfFiles = File("${vcs.path}${separator}paths.txt") //карта: имя файла - путь к нему
+    val hashCommit = File("${vcs.path}${separator}hashCommit.txt")
+}
